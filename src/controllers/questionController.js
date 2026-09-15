@@ -20,7 +20,14 @@ function isPositiveInt(value) {
 
 export async function create(req, res) {
   try {
-    const { enunciado, dificuldade, respostaCorreta, subjectId, authorId, ativa } = req.body;
+    const {
+      enunciado,
+      dificuldade,
+      respostaCorreta,
+      subjectId,
+      authorId,
+      ativa,
+    } = req.body;
 
     // Validação de campos obrigatórios
     if (

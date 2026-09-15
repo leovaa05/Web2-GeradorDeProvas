@@ -21,7 +21,8 @@ export async function create(req, res) {
     if (!nome || professorId === undefined || professorId === null) {
       return res.status(400).json({
         success: false,
-        message: "Campos obrigatórios ausentes: nome e professorId são necessários",
+        message:
+          "Campos obrigatórios ausentes: nome e professorId são necessários",
       });
     }
 
