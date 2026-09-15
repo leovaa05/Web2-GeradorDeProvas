@@ -1,12 +1,4 @@
-// src/controllers/subjectController.js
-import prisma from "../config/database.js"; // ajuste o caminho conforme o seu projeto
-
-// Campos públicos do professor que podem ser expostos em relações
-const PROFESSOR_SELECT = {
-  id: true,
-  nome: true, // troque para "name" se o seu model User usar esse nome de campo
-  email: true,
-};
+import * as subjectService from "../services/subjectService.js";
 
 function isPositiveInt(value) {
   const n = Number(value);
@@ -17,50 +9,45 @@ export async function create(req, res) {
   try {
     const { nome, professorId, ativa } = req.body;
 
-    // Validação de campos obrigatórios
-    if (!nome || professorId === undefined || professorId === null) {
+    if (!nome || typeof nome !== "string" || !nome.trim()) {
       return res.status(400).json({
         success: false,
-        message:
-          "Campos obrigatórios ausentes: nome e professorId são necessários",
+        message: "Campo obrigatório ausente: nome",
       });
     }
 
-    // Validação de ID
-    if (!isPositiveInt(professorId)) {
+    if (
+      professorId === undefined ||
+      professorId === null ||
+      !isPositiveInt(professorId)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "professorId deve ser um inteiro positivo",
+        message: "professorId é obrigatório e deve ser um inteiro positivo",
       });
     }
 
-    // Confirma que o professor existe
-    const professor = await prisma.user.findUnique({
-      where: { id: Number(professorId) },
+    if (ativa !== undefined && typeof ativa !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "ativa deve ser um booleano",
+      });
+    }
+
+    const result = await subjectService.createSubject({
+      nome,
+      professorId: Number(professorId),
+      ativa,
     });
 
-    if (!professor) {
+    if (!result.ok) {
       return res.status(404).json({
         success: false,
         message: "Professor não encontrado",
       });
     }
 
-    const subject = await prisma.subject.create({
-      data: {
-        nome,
-        ativa: ativa !== undefined ? Boolean(ativa) : true,
-        professorId: Number(professorId),
-      },
-      include: {
-        professor: { select: PROFESSOR_SELECT },
-      },
-    });
-
-    return res.status(201).json({
-      success: true,
-      data: subject,
-    });
+    return res.status(201).json({ success: true, data: result.data });
   } catch (error) {
     console.error("Erro ao criar matéria:", error);
     return res.status(500).json({
@@ -72,12 +59,7 @@ export async function create(req, res) {
 
 export async function getAll(req, res) {
   try {
-    const subjects = await prisma.subject.findMany({
-      include: {
-        professor: { select: PROFESSOR_SELECT },
-      },
-      orderBy: { id: "asc" },
-    });
+    const subjects = await subjectService.getAllSubjects();
 
     return res.status(200).json({
       success: true,
@@ -104,12 +86,7 @@ export async function getById(req, res) {
       });
     }
 
-    const subject = await prisma.subject.findUnique({
-      where: { id: Number(id) },
-      include: {
-        professor: { select: PROFESSOR_SELECT },
-      },
-    });
+    const subject = await subjectService.getSubjectById(Number(id));
 
     if (!subject) {
       return res.status(404).json({
@@ -118,15 +95,129 @@ export async function getById(req, res) {
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      data: subject,
-    });
+    return res.status(200).json({ success: true, data: subject });
   } catch (error) {
     console.error("Erro ao buscar matéria:", error);
     return res.status(500).json({
       success: false,
       message: "Erro interno ao buscar matéria",
+    });
+  }
+}
+
+export async function update(req, res) {
+  try {
+    const { id } = req.params;
+    const { nome, ativa, professorId } = req.body;
+
+    if (!isPositiveInt(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido: deve ser um inteiro positivo",
+      });
+    }
+
+    const allowedFields = ["nome", "ativa", "professorId"];
+    const sentFields = allowedFields.filter((field) =>
+      Object.hasOwn(req.body ?? {}, field),
+    );
+
+    if (sentFields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Informe ao menos um campo para atualizar: nome, ativa ou professorId",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "nome") &&
+      (typeof nome !== "string" || !nome.trim())
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "nome não pode ser vazio",
+      });
+    }
+
+    if (Object.hasOwn(req.body, "ativa") && typeof ativa !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "ativa deve ser um booleano",
+      });
+    }
+
+    if (Object.hasOwn(req.body, "professorId") && !isPositiveInt(professorId)) {
+      return res.status(400).json({
+        success: false,
+        message: "professorId deve ser um inteiro positivo",
+      });
+    }
+
+    const result = await subjectService.updateSubject(Number(id), {
+      ...(Object.hasOwn(req.body, "nome") && { nome }),
+      ...(Object.hasOwn(req.body, "ativa") && { ativa }),
+      ...(Object.hasOwn(req.body, "professorId") && {
+        professorId: Number(professorId),
+      }),
+    });
+
+    if (!result.ok) {
+      if (result.reason === "NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Matéria não encontrada" });
+      }
+      if (result.reason === "PROFESSOR_NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Professor não encontrado" });
+      }
+    }
+
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (error) {
+    console.error("Erro ao atualizar matéria:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno ao atualizar matéria",
+    });
+  }
+}
+
+export async function remove(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!isPositiveInt(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido: deve ser um inteiro positivo",
+      });
+    }
+
+    const result = await subjectService.deleteSubject(Number(id));
+
+    if (!result.ok) {
+      if (result.reason === "NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Matéria não encontrada" });
+      }
+      if (result.reason === "SUBJECT_IN_USE") {
+        return res.status(409).json({
+          success: false,
+          message: "Matéria possui questões vinculadas e não pode ser removida",
+        });
+      }
+    }
+
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (error) {
+    console.error("Erro ao remover matéria:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno ao remover matéria",
     });
   }
 }

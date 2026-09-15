@@ -1,17 +1,4 @@
-// src/controllers/questionController.js
-import prisma from "../config/database.js"; // ajuste o caminho conforme o seu projeto
-
-const AUTHOR_SELECT = {
-  id: true,
-  nome: true, // troque para "name" se necessário
-  email: true,
-};
-
-const SUBJECT_SELECT = {
-  id: true,
-  nome: true,
-  ativa: true,
-};
+import * as questionService from "../services/questionService.js";
 
 function isPositiveInt(value) {
   const n = Number(value);
@@ -29,81 +16,89 @@ export async function create(req, res) {
       ativa,
     } = req.body;
 
-    // Validação de campos obrigatórios
+    if (!enunciado || typeof enunciado !== "string" || !enunciado.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Campo obrigatório ausente: enunciado",
+      });
+    }
+
+    const dificuldadeNum = Number(dificuldade);
     if (
-      !enunciado ||
       dificuldade === undefined ||
       dificuldade === null ||
-      subjectId === undefined ||
-      subjectId === null ||
-      authorId === undefined ||
-      authorId === null
+      ![1, 2, 3].includes(dificuldadeNum)
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Campos obrigatórios ausentes: enunciado, dificuldade, subjectId e authorId são necessários",
+          "dificuldade é obrigatória e deve ser 1 (fácil), 2 (média) ou 3 (difícil)",
       });
     }
 
-    // Validação da dificuldade (1, 2 ou 3)
-    const dificuldadeNum = Number(dificuldade);
-    if (![1, 2, 3].includes(dificuldadeNum)) {
+    if (
+      subjectId === undefined ||
+      subjectId === null ||
+      !isPositiveInt(subjectId)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "dificuldade deve ser 1 (fácil), 2 (média) ou 3 (difícil)",
+        message: "subjectId é obrigatório e deve ser um inteiro positivo",
       });
     }
 
-    // Validação de IDs
-    if (!isPositiveInt(subjectId) || !isPositiveInt(authorId)) {
+    if (
+      authorId === undefined ||
+      authorId === null ||
+      !isPositiveInt(authorId)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "subjectId e authorId devem ser inteiros positivos",
+        message: "authorId é obrigatório e deve ser um inteiro positivo",
       });
     }
 
-    // Confirma que a matéria existe
-    const subject = await prisma.subject.findUnique({
-      where: { id: Number(subjectId) },
-    });
-    if (!subject) {
-      return res.status(404).json({
+    if (
+      respostaCorreta !== undefined &&
+      respostaCorreta !== null &&
+      typeof respostaCorreta !== "string"
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Matéria não encontrada",
+        message: "respostaCorreta deve ser texto ou null",
       });
     }
 
-    // Confirma que o autor existe
-    const author = await prisma.user.findUnique({
-      where: { id: Number(authorId) },
-    });
-    if (!author) {
-      return res.status(404).json({
+    if (ativa !== undefined && typeof ativa !== "boolean") {
+      return res.status(400).json({
         success: false,
-        message: "Autor não encontrado",
+        message: "ativa deve ser um booleano",
       });
     }
 
-    const question = await prisma.question.create({
-      data: {
-        enunciado,
-        dificuldade: dificuldadeNum,
-        respostaCorreta: respostaCorreta ?? null,
-        subjectId: Number(subjectId),
-        authorId: Number(authorId),
-        ativa: ativa !== undefined ? Boolean(ativa) : true,
-      },
-      include: {
-        subject: { select: SUBJECT_SELECT },
-        author: { select: AUTHOR_SELECT },
-      },
+    const result = await questionService.createQuestion({
+      enunciado,
+      dificuldade: dificuldadeNum,
+      respostaCorreta,
+      subjectId: Number(subjectId),
+      authorId: Number(authorId),
+      ativa,
     });
 
-    return res.status(201).json({
-      success: true,
-      data: question,
-    });
+    if (!result.ok) {
+      if (result.reason === "SUBJECT_NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Matéria não encontrada" });
+      }
+      if (result.reason === "AUTHOR_NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Autor não encontrado" });
+      }
+    }
+
+    return res.status(201).json({ success: true, data: result.data });
   } catch (error) {
     console.error("Erro ao criar questão:", error);
     return res.status(500).json({
@@ -115,13 +110,7 @@ export async function create(req, res) {
 
 export async function getAll(req, res) {
   try {
-    const questions = await prisma.question.findMany({
-      include: {
-        subject: { select: SUBJECT_SELECT },
-        author: { select: AUTHOR_SELECT },
-      },
-      orderBy: { id: "asc" },
-    });
+    const questions = await questionService.getAllQuestions();
 
     return res.status(200).json({
       success: true,
@@ -148,13 +137,7 @@ export async function getById(req, res) {
       });
     }
 
-    const question = await prisma.question.findUnique({
-      where: { id: Number(id) },
-      include: {
-        subject: { select: SUBJECT_SELECT },
-        author: { select: AUTHOR_SELECT },
-      },
-    });
+    const question = await questionService.getQuestionById(Number(id));
 
     if (!question) {
       return res.status(404).json({
@@ -163,15 +146,174 @@ export async function getById(req, res) {
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      data: question,
-    });
+    return res.status(200).json({ success: true, data: question });
   } catch (error) {
     console.error("Erro ao buscar questão:", error);
     return res.status(500).json({
       success: false,
       message: "Erro interno ao buscar questão",
+    });
+  }
+}
+
+export async function update(req, res) {
+  try {
+    const { id } = req.params;
+    const {
+      enunciado,
+      dificuldade,
+      respostaCorreta,
+      subjectId,
+      authorId,
+      ativa,
+    } = req.body ?? {};
+
+    if (!isPositiveInt(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido: deve ser um inteiro positivo",
+      });
+    }
+
+    const allowedFields = [
+      "enunciado",
+      "dificuldade",
+      "respostaCorreta",
+      "subjectId",
+      "authorId",
+      "ativa",
+    ];
+    const sentFields = allowedFields.filter((field) =>
+      Object.hasOwn(req.body ?? {}, field),
+    );
+
+    if (sentFields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Informe ao menos um campo para atualizar",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "enunciado") &&
+      (typeof enunciado !== "string" || !enunciado.trim())
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "enunciado não pode ser vazio",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "dificuldade") &&
+      ![1, 2, 3].includes(Number(dificuldade))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "dificuldade deve ser 1 (fácil), 2 (média) ou 3 (difícil)",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "respostaCorreta") &&
+      respostaCorreta !== null &&
+      typeof respostaCorreta !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "respostaCorreta deve ser texto ou null",
+      });
+    }
+
+    if (Object.hasOwn(req.body, "subjectId") && !isPositiveInt(subjectId)) {
+      return res.status(400).json({
+        success: false,
+        message: "subjectId deve ser um inteiro positivo",
+      });
+    }
+
+    if (Object.hasOwn(req.body, "authorId") && !isPositiveInt(authorId)) {
+      return res.status(400).json({
+        success: false,
+        message: "authorId deve ser um inteiro positivo",
+      });
+    }
+
+    if (Object.hasOwn(req.body, "ativa") && typeof ativa !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "ativa deve ser um booleano",
+      });
+    }
+
+    const result = await questionService.updateQuestion(Number(id), {
+      ...(Object.hasOwn(req.body, "enunciado") && { enunciado }),
+      ...(Object.hasOwn(req.body, "dificuldade") && {
+        dificuldade: Number(dificuldade),
+      }),
+      ...(Object.hasOwn(req.body, "respostaCorreta") && { respostaCorreta }),
+      ...(Object.hasOwn(req.body, "subjectId") && {
+        subjectId: Number(subjectId),
+      }),
+      ...(Object.hasOwn(req.body, "authorId") && {
+        authorId: Number(authorId),
+      }),
+      ...(Object.hasOwn(req.body, "ativa") && { ativa }),
+    });
+
+    if (!result.ok) {
+      if (result.reason === "NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Questão não encontrada" });
+      }
+      if (result.reason === "SUBJECT_NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Matéria não encontrada" });
+      }
+      if (result.reason === "AUTHOR_NOT_FOUND") {
+        return res
+          .status(404)
+          .json({ success: false, message: "Autor não encontrado" });
+      }
+    }
+
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (error) {
+    console.error("Erro ao atualizar questão:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno ao atualizar questão",
+    });
+  }
+}
+
+export async function remove(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!isPositiveInt(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID inválido: deve ser um inteiro positivo",
+      });
+    }
+
+    const result = await questionService.deleteQuestion(Number(id));
+
+    if (!result.ok) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Questão não encontrada" });
+    }
+
+    return res.status(200).json({ success: true, data: result.data });
+  } catch (error) {
+    console.error("Erro ao remover questão:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno ao remover questão",
     });
   }
 }
