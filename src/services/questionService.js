@@ -1,4 +1,7 @@
 import prisma from "../config/database.js";
+import { NotFoundError } from "../errors/AppError.js";
+
+const publicPersonSelect = { id: true, nome: true };
 
 const publicQuestionSelect = {
   id: true,
@@ -8,172 +11,170 @@ const publicQuestionSelect = {
   ativa: true,
   createdAt: true,
   updatedAt: true,
-  subject: {
-    select: {
-      id: true,
-      nome: true,
-      ativa: true,
-    },
-  },
-  author: {
-    select: {
-      id: true,
-      nome: true,
-      email: true,
-    },
-  },
+  subject: { select: { id: true, nome: true } },
+  author: { select: publicPersonSelect },
 };
 
 /**
- * Busca todas as questões no formato público, incluindo matéria e autor.
- * @returns {Promise<Object[]>} Lista de questões.
+ * Busca todas as questões com matéria e autor públicos.
+ * @returns {Promise<object[]>} Lista de questões.
  */
-export const getAllQuestions = async () => {
+export function getAllQuestions() {
   return prisma.question.findMany({
     select: publicQuestionSelect,
     orderBy: { id: "asc" },
   });
-};
+}
 
 /**
- * Busca uma questão pelo identificador único.
- * @param {number} questionId - ID da questão.
- * @returns {Promise<Object|null>} Questão encontrada ou `null` quando ela não existe.
+ * Busca uma questão por ID.
+ * @param {number} questionId - ID já validado pelo middleware.
+ * @returns {Promise<object>} Questão pública encontrada.
+ * @throws {NotFoundError} Quando a questão não existe.
  */
-export const getQuestionById = async (questionId) => {
-  return prisma.question.findUnique({
+export async function getQuestionById(questionId) {
+  const question = await prisma.question.findUnique({
     where: { id: questionId },
     select: publicQuestionSelect,
   });
-};
+
+  if (!question) {
+    throw new NotFoundError(`Questão com ID ${questionId} não encontrada`);
+  }
+
+  return question;
+}
 
 /**
- * Cria uma questão depois de confirmar que a matéria e o autor existem.
- * @param {{ enunciado: string, dificuldade: number, respostaCorreta?: string|null, subjectId: number, authorId: number, ativa?: boolean }} questionData - Dados recebidos pelo controller.
- * @returns {Promise<{ ok: boolean, data?: Object, reason?: string }>} Resultado da criação ou o motivo da falha.
+ * Confirma que a matéria informada existe.
+ * @param {number} subjectId - ID a verificar.
+ * @throws {NotFoundError} Quando a matéria não existe.
  */
-export const createQuestion = async (questionData) => {
+async function ensureSubjectExists(subjectId) {
   const subject = await prisma.subject.findUnique({
-    where: { id: questionData.subjectId },
+    where: { id: subjectId },
     select: { id: true },
   });
 
   if (!subject) {
-    return { ok: false, reason: "SUBJECT_NOT_FOUND" };
+    throw new NotFoundError(`Matéria com ID ${subjectId} não encontrada`);
   }
+}
 
+/**
+ * Confirma que o autor informado existe.
+ * @param {number} authorId - ID a verificar.
+ * @throws {NotFoundError} Quando o autor não existe.
+ */
+async function ensureAuthorExists(authorId) {
   const author = await prisma.user.findUnique({
-    where: { id: questionData.authorId },
+    where: { id: authorId },
     select: { id: true },
   });
 
   if (!author) {
-    return { ok: false, reason: "AUTHOR_NOT_FOUND" };
+    throw new NotFoundError(`Autor com ID ${authorId} não encontrado`);
   }
-
-  const question = await prisma.question.create({
-    data: {
-      enunciado: questionData.enunciado.trim(),
-      dificuldade: questionData.dificuldade,
-      respostaCorreta: questionData.respostaCorreta ?? null,
-      subjectId: questionData.subjectId,
-      authorId: questionData.authorId,
-      ativa: questionData.ativa ?? true,
-    },
-    select: publicQuestionSelect,
-  });
-
-  return { ok: true, data: question };
-};
+}
 
 /**
- * Atualiza somente os campos enviados para uma questão existente.
- * @param {number} questionId - ID da questão a atualizar.
- * @param {{ enunciado?: string, dificuldade?: number, respostaCorreta?: string|null, subjectId?: number, authorId?: number, ativa?: boolean }} questionData - Campos permitidos no PATCH.
- * @returns {Promise<{ ok: boolean, data?: Object, reason?: string }>} Resultado da atualização, inexistência ou matéria/autor inexistente.
+ * Cria uma questão após confirmar que matéria e autor existem.
+ * @param {{enunciado: string, dificuldade: number, respostaCorreta?: string|null, subjectId: number, authorId: number, ativa?: boolean}} data - Dados validados pelo Zod.
+ * @returns {Promise<object>} Questão pública criada.
+ * @throws {NotFoundError} Quando a matéria ou o autor não existem.
  */
-export const updateQuestion = async (questionId, questionData) => {
-  const questionExistente = await prisma.question.findUnique({
+export async function createQuestion(data) {
+  await Promise.all([
+    ensureSubjectExists(data.subjectId),
+    ensureAuthorExists(data.authorId),
+  ]);
+
+  try {
+    return await prisma.question.create({
+      data: {
+        enunciado: data.enunciado,
+        dificuldade: data.dificuldade,
+        respostaCorreta: data.respostaCorreta ?? null,
+        subjectId: data.subjectId,
+        authorId: data.authorId,
+        ativa: data.ativa ?? true,
+      },
+      select: publicQuestionSelect,
+    });
+  } catch (error) {
+    if (error?.code === "P2003") {
+      throw new NotFoundError("Matéria ou autor informado não encontrado");
+    }
+    throw error;
+  }
+}
+
+/**
+ * Atualiza campos parciais de uma questão existente.
+ * @param {number} questionId - ID já validado pelo middleware.
+ * @param {{enunciado?: string, dificuldade?: number, respostaCorreta?: string|null, subjectId?: number, authorId?: number, ativa?: boolean}} data - Campos permitidos.
+ * @returns {Promise<object>} Questão pública atualizada.
+ * @throws {NotFoundError} Quando a questão, a matéria ou o autor não existem.
+ */
+export async function updateQuestion(questionId, data) {
+  const question = await prisma.question.findUnique({
     where: { id: questionId },
     select: { id: true },
   });
 
-  if (!questionExistente) {
-    return { ok: false, reason: "NOT_FOUND" };
+  if (!question) {
+    throw new NotFoundError(`Questão com ID ${questionId} não encontrada`);
   }
 
-  const data = {};
+  const checks = [];
+  if (data.subjectId !== undefined)
+    checks.push(ensureSubjectExists(data.subjectId));
+  if (data.authorId !== undefined)
+    checks.push(ensureAuthorExists(data.authorId));
+  await Promise.all(checks);
 
-  if (Object.hasOwn(questionData, "enunciado")) {
-    data.enunciado = questionData.enunciado.trim();
-  }
-
-  if (Object.hasOwn(questionData, "dificuldade")) {
-    data.dificuldade = questionData.dificuldade;
-  }
-
-  if (Object.hasOwn(questionData, "respostaCorreta")) {
-    data.respostaCorreta = questionData.respostaCorreta;
-  }
-
-  if (Object.hasOwn(questionData, "ativa")) {
-    data.ativa = questionData.ativa;
-  }
-
-  if (Object.hasOwn(questionData, "subjectId")) {
-    const subject = await prisma.subject.findUnique({
-      where: { id: questionData.subjectId },
-      select: { id: true },
+  try {
+    return await prisma.question.update({
+      where: { id: questionId },
+      data,
+      select: publicQuestionSelect,
     });
-
-    if (!subject) {
-      return { ok: false, reason: "SUBJECT_NOT_FOUND" };
+  } catch (error) {
+    if (error?.code === "P2003") {
+      throw new NotFoundError("Matéria ou autor informado não encontrado");
     }
-
-    data.subjectId = questionData.subjectId;
-  }
-
-  if (Object.hasOwn(questionData, "authorId")) {
-    const author = await prisma.user.findUnique({
-      where: { id: questionData.authorId },
-      select: { id: true },
-    });
-
-    if (!author) {
-      return { ok: false, reason: "AUTHOR_NOT_FOUND" };
+    if (error?.code === "P2025") {
+      throw new NotFoundError(`Questão com ID ${questionId} não encontrada`);
     }
-
-    data.authorId = questionData.authorId;
+    throw error;
   }
-
-  const question = await prisma.question.update({
-    where: { id: questionId },
-    data,
-    select: publicQuestionSelect,
-  });
-
-  return { ok: true, data: question };
-};
+}
 
 /**
  * Remove uma questão existente.
- * @param {number} questionId - ID da questão a remover.
- * @returns {Promise<{ ok: boolean, data?: Object, reason?: string }>} Questão removida ou motivo da falha.
+ * @param {number} questionId - ID já validado pelo middleware.
+ * @returns {Promise<object>} Questão pública removida.
+ * @throws {NotFoundError} Quando a questão não existe.
  */
-export const deleteQuestion = async (questionId) => {
-  const questionExistente = await prisma.question.findUnique({
+export async function deleteQuestion(questionId) {
+  const question = await prisma.question.findUnique({
     where: { id: questionId },
     select: { id: true },
   });
 
-  if (!questionExistente) {
-    return { ok: false, reason: "NOT_FOUND" };
+  if (!question) {
+    throw new NotFoundError(`Questão com ID ${questionId} não encontrada`);
   }
 
-  const question = await prisma.question.delete({
-    where: { id: questionId },
-    select: publicQuestionSelect,
-  });
-
-  return { ok: true, data: question };
-};
+  try {
+    return await prisma.question.delete({
+      where: { id: questionId },
+      select: publicQuestionSelect,
+    });
+  } catch (error) {
+    if (error?.code === "P2025") {
+      throw new NotFoundError(`Questão com ID ${questionId} não encontrada`);
+    }
+    throw error;
+  }
+}

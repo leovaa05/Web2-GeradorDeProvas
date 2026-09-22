@@ -1,31 +1,21 @@
 import { z } from "zod";
 import { positiveIdSchema } from "./idSchema.js";
 
-const papelSchema = z.enum(["PROFESSOR", "ADMIN"], {
-  message: "Papel deve ser PROFESSOR ou ADMIN",
-});
-
-const fotoSchema = z.union([
-  z.string().trim().url("URL da foto inválida"),
-  z.null(),
-]);
-
-/** Schema para POST /users. */
-export const createUserSchema = z
+/** Schema para POST /subjects. */
+export const createSubjectSchema = z
   .object({
     nome: z
       .string()
       .trim()
       .min(3, "Nome deve ter pelo menos 3 caracteres")
       .max(100, "Nome deve ter no máximo 100 caracteres"),
-    email: z.string().trim().toLowerCase().email("Email inválido"),
-    papel: papelSchema.optional(),
-    foto: fotoSchema.optional(),
+    professorId: positiveIdSchema,
+    ativa: z.boolean().optional(),
   })
   .strict();
 
-/** Schema para PATCH /users/:id. */
-export const updateUserSchema = z
+/** Schema para PATCH /subjects/:id. */
+export const updateSubjectSchema = z
   .object({
     nome: z
       .string()
@@ -33,9 +23,8 @@ export const updateUserSchema = z
       .min(3, "Nome deve ter pelo menos 3 caracteres")
       .max(100, "Nome deve ter no máximo 100 caracteres")
       .optional(),
-    email: z.string().trim().toLowerCase().email("Email inválido").optional(),
-    papel: papelSchema.optional(),
-    foto: fotoSchema.optional(),
+    professorId: positiveIdSchema.optional(),
+    ativa: z.boolean().optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {

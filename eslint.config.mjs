@@ -6,7 +6,12 @@ import { defineConfig } from "eslint/config";
 
 export default defineConfig([
   {
-    ignores: ["package-lock.json", "node_modules/**", "coverage/**", "generated/**"],
+    ignores: [
+      "package-lock.json",
+      "node_modules/**",
+      "coverage/**",
+      "generated/**",
+    ],
   },
   {
     files: ["**/*.{js,mjs,cjs}"],
