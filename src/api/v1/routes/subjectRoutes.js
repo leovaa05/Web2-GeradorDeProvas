@@ -7,7 +7,7 @@ import {
   update,
   remove,
 } from "../controllers/subjectController.js";
-import validate from "../middlewares/validate.js";
+import validate from "../../../middlewares/validate.js";
 import {
   createSubjectSchema,
   idParamSchema,

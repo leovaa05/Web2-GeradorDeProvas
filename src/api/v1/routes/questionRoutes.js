@@ -7,7 +7,7 @@ import {
   update,
   remove,
 } from "../controllers/questionController.js";
-import validate from "../middlewares/validate.js";
+import validate from "../../../middlewares/validate.js";
 import {
   createQuestionSchema,
   idParamSchema,

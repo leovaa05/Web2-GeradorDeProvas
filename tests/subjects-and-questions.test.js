@@ -19,11 +19,11 @@ function uniqueEmail(label) {
 /**
  * Cria um usuário (professor/autor) pela API e registra o ID para limpeza.
  * @param {Object} [overrides={}] - Campos que substituem os valores padrão.
- * @returns {Promise<Object>} Resposta recebida do endpoint `POST /users`.
+ * @returns {Promise<Object>} Resposta recebida do endpoint `POST /v1/users`.
  */
 async function createUser(overrides = {}) {
   const response = await request(app)
-    .post("/users")
+    .post("/v1/users")
     .send({
       nome: "Prof. Teste",
       email: uniqueEmail("user"),
@@ -41,11 +41,11 @@ async function createUser(overrides = {}) {
  * Cria uma matéria pela API e registra o ID para limpeza.
  * @param {number} professorId - ID do professor responsável.
  * @param {Object} [overrides={}] - Campos que substituem os valores padrão.
- * @returns {Promise<Object>} Resposta recebida do endpoint `POST /subjects`.
+ * @returns {Promise<Object>} Resposta recebida do endpoint `POST /v1/subjects`.
  */
 async function createSubject(professorId, overrides = {}) {
   const response = await request(app)
-    .post("/subjects")
+    .post("/v1/subjects")
     .send({
       nome: "Matéria Teste",
       professorId,
@@ -64,11 +64,11 @@ async function createSubject(professorId, overrides = {}) {
  * @param {number} subjectId - ID da matéria vinculada.
  * @param {number} authorId - ID do autor.
  * @param {Object} [overrides={}] - Campos que substituem os valores padrão.
- * @returns {Promise<Object>} Resposta recebida do endpoint `POST /questions`.
+ * @returns {Promise<Object>} Resposta recebida do endpoint `POST /v1/questions`.
  */
 async function createQuestion(subjectId, authorId, overrides = {}) {
   const response = await request(app)
-    .post("/questions")
+    .post("/v1/questions")
     .send({
       enunciado: "Quanto é 2 + 2?",
       dificuldade: 1,
@@ -114,11 +114,13 @@ describe("Subject API", () => {
     expect(created.body.success).toBe(true);
     expect(created.body.data.professor.id).toBe(professor.body.data.id);
 
-    const list = await request(app).get("/subjects");
+    const list = await request(app).get("/v1/subjects");
     expect(list.status).toBe(200);
     expect(list.body.total).toBe(list.body.data.length);
 
-    const found = await request(app).get(`/subjects/${created.body.data.id}`);
+    const found = await request(app).get(
+      `/v1/subjects/${created.body.data.id}`,
+    );
     expect(found.status).toBe(200);
     expect(found.body.data.id).toBe(created.body.data.id);
   });
@@ -127,7 +129,7 @@ describe("Subject API", () => {
     const professor = await createUser();
 
     const semNome = await request(app)
-      .post("/subjects")
+      .post("/v1/subjects")
       .send({ professorId: professor.body.data.id });
     const professorInexistente = await createSubject(999999999);
 
@@ -136,8 +138,8 @@ describe("Subject API", () => {
   });
 
   it("rejeita ID inválido e informa matéria inexistente", async () => {
-    const invalido = await request(app).get("/subjects/abc");
-    const inexistente = await request(app).get("/subjects/999999999");
+    const invalido = await request(app).get("/v1/subjects/abc");
+    const inexistente = await request(app).get("/v1/subjects/999999999");
 
     expect(invalido.status).toBe(400);
     expect(inexistente.status).toBe(404);
@@ -150,7 +152,7 @@ describe("Subject API", () => {
     });
 
     const response = await request(app)
-      .patch(`/subjects/${created.body.data.id}`)
+      .patch(`/v1/subjects/${created.body.data.id}`)
       .send({ nome: "Nome atualizado" });
 
     expect(response.status).toBe(200);
@@ -163,10 +165,10 @@ describe("Subject API", () => {
     const created = await createSubject(professor.body.data.id);
 
     const vazio = await request(app)
-      .patch(`/subjects/${created.body.data.id}`)
+      .patch(`/v1/subjects/${created.body.data.id}`)
       .send({});
     const professorInexistente = await request(app)
-      .patch(`/subjects/${created.body.data.id}`)
+      .patch(`/v1/subjects/${created.body.data.id}`)
       .send({ professorId: 999999999 });
 
     expect(vazio.status).toBe(400);
@@ -178,9 +180,11 @@ describe("Subject API", () => {
     const created = await createSubject(professor.body.data.id);
 
     const removed = await request(app).delete(
-      `/subjects/${created.body.data.id}`,
+      `/v1/subjects/${created.body.data.id}`,
     );
-    const found = await request(app).get(`/subjects/${created.body.data.id}`);
+    const found = await request(app).get(
+      `/v1/subjects/${created.body.data.id}`,
+    );
 
     expect(removed.status).toBe(200);
     expect(found.status).toBe(404);
@@ -192,7 +196,7 @@ describe("Subject API", () => {
     await createQuestion(subject.body.data.id, professor.body.data.id);
 
     const response = await request(app).delete(
-      `/subjects/${subject.body.data.id}`,
+      `/v1/subjects/${subject.body.data.id}`,
     );
 
     expect(response.status).toBe(409);
@@ -212,11 +216,13 @@ describe("Question API", () => {
     expect(created.body.data.subject.id).toBe(subject.body.data.id);
     expect(created.body.data.author.id).toBe(professor.body.data.id);
 
-    const list = await request(app).get("/questions");
+    const list = await request(app).get("/v1/questions");
     expect(list.status).toBe(200);
     expect(list.body.total).toBe(list.body.data.length);
 
-    const found = await request(app).get(`/questions/${created.body.data.id}`);
+    const found = await request(app).get(
+      `/v1/questions/${created.body.data.id}`,
+    );
     expect(found.status).toBe(200);
     expect(found.body.data.id).toBe(created.body.data.id);
   });
@@ -247,8 +253,8 @@ describe("Question API", () => {
   });
 
   it("rejeita ID inválido e informa questão inexistente", async () => {
-    const invalido = await request(app).get("/questions/abc");
-    const inexistente = await request(app).get("/questions/999999999");
+    const invalido = await request(app).get("/v1/questions/abc");
+    const inexistente = await request(app).get("/v1/questions/999999999");
 
     expect(invalido.status).toBe(400);
     expect(inexistente.status).toBe(404);
@@ -266,7 +272,7 @@ describe("Question API", () => {
     );
 
     const response = await request(app)
-      .patch(`/questions/${created.body.data.id}`)
+      .patch(`/v1/questions/${created.body.data.id}`)
       .send({ dificuldade: 3 });
 
     expect(response.status).toBe(200);
@@ -283,7 +289,7 @@ describe("Question API", () => {
     );
 
     const response = await request(app)
-      .patch(`/questions/${created.body.data.id}`)
+      .patch(`/v1/questions/${created.body.data.id}`)
       .send({});
 
     expect(response.status).toBe(400);
@@ -298,9 +304,11 @@ describe("Question API", () => {
     );
 
     const removed = await request(app).delete(
-      `/questions/${created.body.data.id}`,
+      `/v1/questions/${created.body.data.id}`,
     );
-    const found = await request(app).get(`/questions/${created.body.data.id}`);
+    const found = await request(app).get(
+      `/v1/questions/${created.body.data.id}`,
+    );
 
     expect(removed.status).toBe(200);
     expect(found.status).toBe(404);
