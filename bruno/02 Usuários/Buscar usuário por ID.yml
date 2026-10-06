@@ -7,7 +7,7 @@ info:
 
 http:
   method: GET
-  url: "{{baseUrl}}/users/{{userId}}"
+  url: "{{baseUrl}}/v1/users/{{userId}}"
 
 runtime:
   scripts:
@@ -21,3 +21,7 @@ runtime:
 
 settings:
   encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

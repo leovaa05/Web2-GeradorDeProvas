@@ -1,10 +1,10 @@
 //src/app.js
 import express from "express";
 import prisma from "./config/database.js";
-import userRoutes from "./routes/userRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
 import questionRoutes from "./routes/questionRoutes.js";
 import errorHandler, { notFoundHandler } from "./middlewares/errorHandler.js";
+import v1Routes from "./api/v1/routes/index.js";
 
 const app = express();
 
@@ -19,6 +19,8 @@ app.get("/health", async (_req, res) => {
       status: "OK",
       message: "API do Gerador de Provas",
       timestamp: new Date().toISOString(),
+      version: "1.0.0",
+      availableVersions: ["v1"],
       services: {
         api: "OK",
         database: { status: "OK" },
@@ -30,6 +32,8 @@ app.get("/health", async (_req, res) => {
     return res.status(503).json({
       status: "DEGRADED",
       message: "API do Gerador de Provas",
+      version: "1.0.0",
+      availableVersions: ["v1"],
       services: {
         api: "OK",
         database: { status: "ERROR" },
@@ -38,7 +42,7 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-app.use("/users", userRoutes);
+app.use("/v1", v1Routes);
 app.use("/subjects", subjectRoutes);
 app.use("/questions", questionRoutes);
 
