@@ -7,7 +7,7 @@ info:
 
 http:
   method: POST
-  url: "{{baseUrl}}/questions"
+  url: "{{baseUrl}}/v1/questions"
   body:
     type: json
     data: |-
@@ -29,3 +29,7 @@ runtime:
 
 settings:
   encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

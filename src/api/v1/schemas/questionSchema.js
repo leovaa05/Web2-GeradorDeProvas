@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { positiveIdSchema } from "./idSchema.js";
+import { positiveIdSchema } from "../../../schemas/idSchema.js";
 
 /** Aceita texto não vazio (até 500 caracteres) ou null explícito para limpar a resposta. */
 const respostaCorretaSchema = z.union([

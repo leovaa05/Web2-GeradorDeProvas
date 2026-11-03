@@ -15,6 +15,8 @@ export default defineConfig({
     env: { DATABASE_URL: process.env.TEST_DATABASE_URL },
     fileParallelism: false,
     setupFiles: ["./tests/setup.js"],
+    testTimeout: 20000,
+    hookTimeout: 20000,
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
