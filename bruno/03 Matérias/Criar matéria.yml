@@ -12,17 +12,33 @@ http:
     type: json
     data: |-
       {
-        "nome": "Matemática",
-        "professorId": 1
+        "nome": "  Matéria de teste {{runId}}  ",
+        "professorId": {{subjectProfessorId}}
       }
 
 runtime:
   scripts:
     - type: before-request
       code: |-
-        if (!bru.getVar("runId")) {
-          bru.setVar("runId", `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+        const runId = bru.getVar("runId") ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        bru.setVar("runId", runId);
+
+        const response = await bru.sendRequest({
+          method: "POST",
+          url: `${bru.getEnvVar("baseUrl")}/v1/users`,
+          headers: { "Content-Type": "application/json" },
+          data: {
+            nome: "Professor da matéria",
+            email: `professor-materia-${runId}@exemplo.com`,
+            papel: "PROFESSOR"
+          }
+        });
+
+        if (response.status !== 201) {
+          throw new Error("Não foi possível criar o professor da matéria");
         }
+
+        bru.setVar("subjectProfessorId", String(response.data.data.id));
     - type: after-response
       code: |-
         if (res.status === 201) {
@@ -35,11 +51,8 @@ runtime:
           expect(res.body.success).to.equal(true);
           expect(res.body.data).to.have.property("id");
           expect(res.body.data).to.have.property("professor");
+          expect(res.body.data.nome).to.equal(`Matéria de teste ${bru.getVar("runId")}`);
         });
 
 settings:
   encodeUrl: true
-  timeout: 0
-  followRedirects: true
-  maxRedirects: 5
-  forwardAuthorizationHeader: true

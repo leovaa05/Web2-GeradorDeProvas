@@ -1,0 +1,110 @@
+info:
+  name: POST multipart incompleto
+  type: http
+  seq: 16
+  tags:
+    - aula-09-pratica
+
+http:
+  method: POST
+  url: "{{baseUrl}}/v2/users"
+  headers:
+    - name: Content-Type
+      value: multipart/form-data; boundary=aula09
+  body:
+    type: text
+    data: ""
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        const scenario = {"title": "POST multipart incompleto", "raw": "", "contentType": "multipart/form-data; boundary=aula09", "status": 400, "code": "VALIDATION_ERROR", "message": "Multipart inválido: confira corpo e boundary", "calls": 0};
+        const baseUrl = bru.getEnvVar("baseUrl");
+        const run = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        bru.setVar("a09Ids", []);
+        bru.setVar("a09Cleanup", ["Limpeza ainda não executada"]);
+        bru.setVar("a09Cross", null); bru.setVar("a09Observed", null);
+        bru.setVar("a09UserEmail", `fixture-${run}@example.com`);
+        bru.setVar("a09Email", `upload-${run}@example.com`);
+        /** Preparação JSON independente do upload da atividade. */
+        async function fixture(email) {
+          const r = await bru.sendRequest({ method:"POST", url:`${baseUrl}/v2/users`, headers:{"Content-Type":"application/json"}, data:{primeiroNome:"Ada",sobrenome:"Lovelace",email,foto:"https://example.com/previous.png"} });
+          if (r.status !== 201) throw new Error(`Preparação de fixture: HTTP ${r.status}`);
+          const ids=bru.getVar("a09Ids");ids.push(r.data.data.id);bru.setVar("a09Ids",ids);return r.data.data;
+        }
+        const user=await fixture(bru.getVar("a09UserEmail"));
+        bru.setVar("a09Id",String(user.id));
+        if (scenario.duplicate) {
+          if ("post" === "post") bru.setVar("a09Email",user.email);
+          else { const other=await fixture(`other-${run}@example.com`);bru.setVar("a09DuplicateEmail",other.email); }
+        }
+        if(scenario.missing) { const r=await bru.sendRequest({method:"DELETE",url:`${baseUrl}/v1/users/${user.id}`}); if(r.status!==200)throw new Error("Preparação de ID ausente falhou"); }
+        if(scenario.invalidId) bru.setVar("a09Id","abc");
+        const stats=await bru.sendRequest({method:"GET",url:`${bru.getEnvVar("uploadStubUrl")}/stats`});
+        if(stats.status!==200) throw new Error("Simulador de upload indisponível");
+        bru.setVar("a09CountBefore",stats.data.uploads);
+    - type: after-response
+      code: |-
+        const scenario = {"title": "POST multipart incompleto", "raw": "", "contentType": "multipart/form-data; boundary=aula09", "status": 400, "code": "VALIDATION_ERROR", "message": "Multipart inválido: confira corpo e boundary", "calls": 0};
+        const baseUrl=bru.getEnvVar("baseUrl");
+        if(res.status===201) { const ids=bru.getVar("a09Ids");ids.push(res.body.data.id);bru.setVar("a09Ids",ids); }
+        const id="post"==="post" && res.status===201 ? res.body.data.id : bru.getVar("a09Ids")[0];
+        /** Preserva respostas HTTP 4xx observadas; falhas de rede continuam erros. */
+        async function observe(options) {
+         try { return await bru.sendRequest(options); }
+         catch(error) { if(error.response)return {status:error.response.status,data:error.response.data};throw error; }
+        }
+        const observed=await observe({method:"GET",url:`${baseUrl}/v2/users/${id}`});
+        bru.setVar("a09Observed",observed.data.data || null);
+        const cross=await observe({method:"GET",url:`${baseUrl}/v1/users/${id}`});
+        bru.setVar("a09Cross",cross.data.data || null);
+        const listing=await bru.sendRequest({method:"GET",url:`${baseUrl}/v2/users`});
+        bru.setVar("a09CreatedCount",listing.data.data.filter(item=>item.email===bru.getVar("a09Email")).length);
+        const stats=await bru.sendRequest({method:"GET",url:`${bru.getEnvVar("uploadStubUrl")}/stats`});
+        bru.setVar("a09Calls",stats.data.uploads-bru.getVar("a09CountBefore"));
+        const errors=[];
+        for(const ownId of bru.getVar("a09Ids").slice().reverse()) {
+         try { const r=await observe({method:"DELETE",url:`${baseUrl}/v1/users/${ownId}`});if(![200,404].includes(r.status))errors.push(`HTTP ${r.status}`); }
+         catch { errors.push("Falha de limpeza da própria fixture"); }
+        }
+        bru.setVar("a09Cleanup",errors);
+    - type: tests
+      code: |-
+        const scenario={"title": "POST multipart incompleto", "raw": "", "contentType": "multipart/form-data; boundary=aula09", "status": 400, "code": "VALIDATION_ERROR", "message": "Multipart inválido: confira corpo e boundary", "calls": 0};
+        test("Limpa somente fixtures próprias",()=>expect(bru.getVar("a09Cleanup")).to.deep.equal([]));
+        test("Status e erro do contrato final",()=>{
+         expect(res.status).to.equal(scenario.status);
+         expect(res.body.success).to.equal(!scenario.code);
+         if(scenario.code) {
+          expect(res.body.error.code).to.equal(scenario.code);
+          expect(JSON.stringify(res.body)).not.to.include("sensitive-provider-detail");
+          if(scenario.message)expect(res.body.error.message).to.equal(scenario.message);
+          if(scenario.field)expect(res.body.error.details.some(item=>item.field===scenario.field)).to.equal(true);
+         }
+        });
+        test("Uploads respeitam a ordem de validação",()=>expect(bru.getVar("a09Calls")).to.equal(scenario.calls));
+        test("Persistência e compatibilidade V1",()=>{
+         const stored=bru.getVar("a09Observed");
+         if(scenario.code) {
+          if(!scenario.missing)expect(stored.foto).to.equal("https://example.com/previous.png");
+          if("post"==="post" && !scenario.duplicate)expect(bru.getVar("a09CreatedCount")).to.equal(0);
+          return;
+         }
+         expect(res.body).to.have.property("data");
+         expect(stored.foto).to.equal(res.body.data.foto);
+         expect(bru.getVar("a09Cross").foto).to.equal(res.body.data.foto);
+         const expected={previous:"https://example.com/previous.png",manual:"https://example.com/manual.png",null:null}[scenario.photo];
+         if(scenario.photo==="uploaded")expect(stored.foto).to.match(/^https:\/\/[^/]+\/[0-9a-f-]{36}\/$/);
+         else expect(stored.foto).to.equal(expected);
+         expect(stored.primeiroNome).to.equal(scenario.fields?.primeiroNome || "Ada");
+         expect(stored.sobrenome).to.equal("Lovelace");
+         if(scenario.fields?.telefone)expect(stored.telefone).to.equal(scenario.fields.telefone);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
