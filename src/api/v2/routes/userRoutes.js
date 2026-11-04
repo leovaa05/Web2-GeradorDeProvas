@@ -11,7 +11,12 @@ import {
 
 const router = express.Router();
 
-router.post("/", uploadPhoto, validate(createUserV2Schema), userController.create);
+router.post(
+  "/",
+  uploadPhoto,
+  validate(createUserV2Schema),
+  userController.create,
+);
 router.get("/", userController.getAll);
 router.get("/:id", validate(idParamSchema, "params"), userController.getById);
 router.patch(

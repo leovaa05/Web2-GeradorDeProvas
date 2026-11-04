@@ -23,9 +23,7 @@ async function ensureProfessorExists(professorId) {
   });
 
   if (!professor) {
-    throw new NotFoundError(
-      `Professor com ID ${professorId} não encontrado`,
-    );
+    throw new NotFoundError(`Professor com ID ${professorId} não encontrado`);
   }
 }
 

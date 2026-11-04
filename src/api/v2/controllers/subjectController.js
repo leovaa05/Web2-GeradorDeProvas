@@ -30,9 +30,7 @@ export async function getAll(req, res, next) {
 
 export async function getById(req, res, next) {
   try {
-    const subject = await subjectService.getSubjectById(
-      Number(req.params.id),
-    );
+    const subject = await subjectService.getSubjectById(Number(req.params.id));
 
     return res.status(200).json({
       success: true,
@@ -62,9 +60,7 @@ export async function update(req, res, next) {
 
 export async function remove(req, res, next) {
   try {
-    const subject = await subjectService.deleteSubject(
-      Number(req.params.id),
-    );
+    const subject = await subjectService.deleteSubject(Number(req.params.id));
 
     return res.status(200).json({
       success: true,

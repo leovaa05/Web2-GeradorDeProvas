@@ -32,12 +32,12 @@ export async function uploadToUploadcare(buffer, mimeType) {
     process.env.NODE_ENV === "test"
       ? process.env.UPLOADCARE_TEST_BASE_URL
       : undefined;
-      
+
   const client = new UploadClient({
     publicKey,
     ...(testBaseURL && { baseURL: testBaseURL }),
   });
-  
+
   try {
     const file = await client.uploadFile(buffer, {
       fileName: `${randomUUID()}.${extensions[mimeType]}`,

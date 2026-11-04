@@ -106,7 +106,7 @@ export async function createUser(data, file) {
   if (owner) throw new ConflictError("E-mail já cadastrado");
   const foto = file
     ? await uploadToUploadcare(file.buffer, file.mimetype)
-    : data.foto ?? null;
+    : (data.foto ?? null);
   const tipoUsuario = data.tipoUsuario ?? "professor";
   try {
     const created = await prisma.user.create({
@@ -149,7 +149,10 @@ export async function updateUser(userId, data, file) {
   const synchronizedData = { ...data };
   // ADICIONADO: arquivo substitui a referência, depois de existência/e-mail válidos.
   if (file) {
-    synchronizedData.foto = await uploadToUploadcare(file.buffer, file.mimetype);
+    synchronizedData.foto = await uploadToUploadcare(
+      file.buffer,
+      file.mimetype,
+    );
   }
   if (data.tipoUsuario !== undefined)
     synchronizedData.papel = toPapel(data.tipoUsuario);
